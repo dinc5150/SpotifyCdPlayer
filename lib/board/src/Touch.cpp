@@ -1,5 +1,7 @@
 #include "Touch.h"
 
+#include <esp_timer.h>
+
 #include "pins.h"
 
 namespace board {
@@ -12,8 +14,12 @@ constexpr uint32_t kI2cHz = 400000;
 }  // namespace
 
 volatile bool Touch::interrupted_ = false;
+volatile int64_t Touch::lastInterruptUs_ = 0;
 
-void IRAM_ATTR Touch::onInterrupt() { interrupted_ = true; }
+void IRAM_ATTR Touch::onInterrupt() {
+  interrupted_ = true;
+  lastInterruptUs_ = esp_timer_get_time();
+}
 
 bool Touch::begin(TwoWire &wire, uint16_t displayWidth, uint16_t displayHeight,
                   Transform transform) {
@@ -30,8 +36,9 @@ bool Touch::begin(TwoWire &wire, uint16_t displayWidth, uint16_t displayHeight,
   pinMode(pins::TP_INT, INPUT_PULLUP);
   attachInterrupt(pins::TP_INT, onInterrupt, FALLING);
 
-  return readRegister(kRegChipId, chipId_, sizeof(chipId_)) &&
-         (chipId_[0] | chipId_[1] | chipId_[2]) != 0;
+  const bool ok = readRegister(kRegChipId, chipId_, sizeof(chipId_)) && (chipId_[0] | chipId_[1] | chipId_[2]) != 0;
+  ready_ = true;  // read() may now use the bus; it may be called from another task
+  return ok;
 }
 
 void Touch::setTransform(Transform transform, uint16_t displayWidth, uint16_t displayHeight) {
@@ -41,7 +48,7 @@ void Touch::setTransform(Transform transform, uint16_t displayWidth, uint16_t di
 }
 
 bool Touch::read(TouchPoint &point, TouchPoint *raw) {
-  if (!wire_) return false;
+  if (!ready_) return false;
   // Read on a new interrupt, and keep polling while a finger is down so a held
   // press doesn't flicker if the controller only interrupts on changes.
   if (!interrupted_ && !pressed_) return false;

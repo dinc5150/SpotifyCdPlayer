@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-// Minimal line-based serial console shared by the Phase 0 spikes.
+// Minimal line-based serial console, shared by the Phase 0 spikes and the dev firmware.
 // Commands are registered with a name, a one-line help text and a handler
 // that receives the rest of the line (arguments, already trimmed).
 

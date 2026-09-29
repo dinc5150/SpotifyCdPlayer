@@ -1,6 +1,6 @@
 # Card Player — NFC Spotify Controller: Implementation Plan
 
-Status: **Approved decisions, ready for Phase 0** · Date: 2026-09-28
+Status: **Phase 0 done (gate G1 passed); Phase 1 in progress** · Date: 2026-09-29
 Target hardware: Waveshare ESP32-S3-Touch-LCD-1.47 + PN532 NFC V3 module + MIFARE Classic 1K cards (nothing else)
 
 ---
@@ -27,6 +27,7 @@ A small landscape touchscreen box. Tap an NFC card and the album, playlist, arti
 | D12 | Web/provisioning | **ESPAsyncWebServer + DNSServer** custom captive portal (one web stack for setup, Spotify linking, settings, OTA) | Recommended (§4.5) |
 | D13 | OTA | Own upload handler (`Update` API) in portal + ArduinoOTA for dev | Recommended (§4.8) |
 | D14 | Power saving | Screen-off power profile: RF field off between card searches, slower card search (750 ms), LCD panel sleep with rendering paused, Spotify polling stopped, Wi-Fi max modem sleep, CPU at 80 MHz (§9.5) | Decided by user |
+| D15 | Playback from other devices | With the screen on, Idle checks every 5 s for music playing anywhere on the account and switches to Now Playing. Controls act on the playing device; cards still play on the saved speaker. A paused session stays on Idle with Resume. The screen stays on while music plays (§6.8) | Decided by user |
 
 The "Recommended" rows are my calls, each with pros and cons in §4. Change any of them before Phase 1 if you disagree.
 
@@ -37,6 +38,7 @@ The "Recommended" rows are my calls, each with pros and cons in §4. Change any 
 ### In scope (v1)
 - **Play from card:** read the NDEF URL, then start playback on the target device. Supported: album, playlist, artist, show (podcast), Liked Songs.
 - **Now Playing:** context name (album or playlist name), track title, artist, progress, play/pause, previous, next. Also volume, shuffle and repeat.
+- **Pick up music started elsewhere:** music playing anywhere on the account (phone, desktop, a speaker's app) shows on Now Playing and can be controlled from the device (§6.8).
 - **Speakers menu:** list the available Spotify Connect devices, cycle through them, select one, and transfer playback to it. The choice is remembered.
 - **Write-card mode:** place a card, play something in the Spotify app, tap **Record**. The device writes the URL, verifies it, and asks before overwriting an existing card.
 - **Wi-Fi:** first-boot SoftAP with a captive portal, up to 3 saved networks, and a "Set up network" menu entry that reopens the portal.
@@ -170,7 +172,7 @@ Set the PN532 V3 interface switches to **SPI: I0 = OFF/L, I1 = ON/H**. Check the
 - Cons: blocking bitmap push, though that's trivial at 172×320: about 11 ms per full frame at 80 MHz.
 - Alternative: **esp_lcd + vendor `esp_lcd_jd9853` C component** copied into `lib/`. Gives async DMA flush, but the vendor proved it only in the IDF build. Keep it as a fallback if tearing or performance issues appear.
 
-**Touch: vendor `esp_lcd_touch_axs5106l` Arduino driver, vendored into `lib/axs5106l/`**
+**Touch: vendor `esp_lcd_touch_axs5106l` Arduino driver, reworked into `lib/board/` (`Touch.cpp`)**
 - Has no registry package. Keep attribution, pin the copy, and fix the landscape rotation mapping.
 
 ### 4.3 NFC
@@ -319,6 +321,8 @@ stateDiagram-v2
 
 Overlays run on top of `Ready`: Menu, Speakers, WriteCard, Wi-Fi, Spotify account, Settings, About. **While WriteCard is open, card taps never trigger playback.**
 
+"Playback detected" means `/me/player` reports `is_playing: true` on any of the account's devices (§6.8). A paused session keeps Idle.
+
 ### 5.4 Card tap → play (happy path)
 
 ```mermaid
@@ -365,22 +369,24 @@ SpotifyCdPlayer2/
   src/
     main.cpp                  ← boot: HAL → settings → tasks
     app/        AppController.{h,cpp} AppState.h Events.h Policies.cpp
-    hal/        Display.cpp (Arduino_GFX + JD9853 init) Touch.cpp Backlight.cpp BootButton.cpp
+    hal/        BootButton.cpp (GPIO0 → util/ButtonGesture)
     ui/         UiBridge.cpp ScreenManager.cpp Theme.cpp Toast.cpp
                 screens/ Boot Setup LinkSpotify Idle NowPlaying PlaybackPanel Menu Speakers WriteCard Wifi Account Settings About
     nfc/        NfcService.cpp CardCodec.{h,cpp}   ← CardCodec is pure logic (unit-tested)
     spotify/    SpotifyAuth.cpp (PKCE, tokens) SpotifyClient.cpp (REST) SpotifyWorker.cpp Models.h Parsers.cpp (pure, unit-tested)
     net/        WifiSupervisor.cpp SetupAp.cpp Portal.cpp Api.cpp Mdns.cpp TimeSync.cpp Ota.cpp
     storage/    Settings.{h,cpp}
-    util/       Log.cpp Base64Url.cpp Sha256.cpp Backoff.cpp Uri.cpp
-  lib/axs5106l/               ← vendored Waveshare touch driver (+ LICENSE/attribution)
+    util/       Log.cpp ButtonGesture.cpp (pure) Backoff.cpp (pure) Base64Url.cpp Sha256.cpp Uri.cpp
+    dev/        DevConsole.cpp  ← serial console, dev build only
+  lib/board/                  ← display (Arduino_GFX + JD9853 init), AXS5106L touch (from the Waveshare driver), backlight
+  lib/console/                ← line-based serial console (spikes + dev build)
   web/                        ← portal source (index.html, setup.html, app.js, style.css)
   relay/index.html            ← GitHub Pages OAuth relay (§6.2)
   .github/workflows/pages.yml ← deploys relay/
   scripts/embed_web.py        ← gzip web/ → src/net/web_assets.h (PlatformIO pre-script)
   scripts/fonts.md            ← lv_font_conv commands used
   assets/fonts/               ← generated LVGL fonts
-  test/                       ← native unit tests (CardCodec, Parsers, PKCE, Backoff, policies)
+  test/test_logic/            ← unit tests for pure modules; run on the PC (native) or the board (test_device)
   docs/ wiring.md spotify-setup.md user-guide.md spikes.md
 ```
 
@@ -421,8 +427,9 @@ build_type = release
 build_flags = ${env.build_flags} -DCORE_DEBUG_LEVEL=2
 
 [env:dev]
-build_type = debug
-build_flags = ${env.build_flags} -DCORE_DEBUG_LEVEL=4 -DENABLE_ARDUINO_OTA=1 -DENABLE_SERIAL_CONSOLE=1
+build_type = release                            ; debug makes PlatformIO install OpenOCD and slows LVGL
+build_flags = ${env.build_flags} -DCORE_DEBUG_LEVEL=3 -DENABLE_ARDUINO_OTA=1 -DENABLE_SERIAL_CONSOLE=1
+                                                ; level 4 prints a pre-setup memory report that stalls boot without a monitor
 
 [env:native]                                    ; host unit tests for pure logic
 platform = native
@@ -534,9 +541,9 @@ sequenceDiagram
 
 | Situation | Interval |
 |---|---|
-| Screen on, playing | 1.5 s; progress bar interpolated locally between polls |
+| Screen on, playing | 1.5 s for 2 min after any touch, card tap or command; then 5 s, plus one poll timed for the end of the current track. Progress bar interpolated locally between polls. (The screen stays on for as long as music plays (§6.8), so polling at 1.5 s for hours would risk rate limits) |
 | Right after a command | Extra polls at +300 ms and +1.2 s |
-| Screen on, paused/idle | 5 s |
+| Screen on (Active or Dim), idle or paused | 5 s. Picks up music started on another device (§6.8) |
 | Write-card mode | 1 s (context changes must feel instant) |
 | Screen off | Stopped. Poll immediately on wake (touch, card or BOOT) |
 | After `429` | Pause for `Retry-After`, then double the interval for 5 min |
@@ -546,7 +553,7 @@ sequenceDiagram
 | Condition | Detection | UX |
 |---|---|---|
 | No active device / target offline | `404 NO_ACTIVE_DEVICE`, or target missing from devices | If another device is active: "Play on *Living Room TV* instead?" [Yes] [Choose…]. Else open **Speakers** with the message "Pick a speaker" |
-| Restricted device | `is_restricted`, or a `403` not matched below | Greyed in the list: "Can't be controlled remotely" |
+| Restricted device | `is_restricted`, or a `403` not matched below | Greyed in the list: "Can't be controlled remotely". If it's the device that's playing, Now Playing still shows the track but its controls are disabled with the same text |
 | Volume not remotely controllable | `403 VOLUME_CONTROL_DISALLOW` (verified in spike S4), or `supports_volume: false` | Volume row disabled: "This speaker controls its own volume" |
 | Premium required | `403 PREMIUM_REQUIRED` | Blocking screen explaining Premium |
 | Token expired | `401` | Silent refresh, then retry once |
@@ -569,6 +576,24 @@ sequenceDiagram
 - Album cards force shuffle off by default (setting "Albums always play in order").
 - A per-card flag in the URL query overrides it: `?sh=1` means shuffle on, `?sh=0` means shuffle off. Phones ignore unknown query parameters, so the card stays phone-compatible.
 - With no flag, the device leaves shuffle as it was.
+
+### 6.8 Picking up playback from other devices (decided, D15)
+Music started anywhere on the account (phone app, desktop app, a speaker's own app) shows on the device and can be controlled from it.
+
+- **Detection:** while the screen is on (Active or Dim) and Idle is showing, poll `GET /v1/me/player?additional_types=episode` every 5 s (§6.5), so music is picked up within 5 s. `204 No Content` means there's no session.
+  - Why polling: Spotify's Web API has no push notifications. Its own apps use a private live connection, but that needs a different kind of login and breaks the developer terms, so it isn't used.
+- **Playing** (`is_playing: true`): Idle → Now Playing (trigger `PlaybackStarted`).
+- **Paused session** (`is_playing: false` with an `item`): stay on Idle and show "Last: <name>  [▶ Resume]". Resume sends `PUT /me/player/play` to that session's device. Only music that's actually playing takes over the screen.
+- **Controls follow the playing device:** play/pause, previous, next, volume, shuffle, repeat and the BOOT short press act on the device in `/me/player` (`device.id`), not the saved speaker.
+  - The chip reads "▶ Playing on <device> ▾" when that isn't the saved speaker; tapping it still opens Speakers.
+  - Volume follows that device's `supports_volume` (§6.6).
+  - If that device is `is_restricted`, the track still shows but the controls are disabled: "Can't be controlled remotely".
+- **Cards don't follow:** a card tap always plays on the saved speaker, even while something plays elsewhere, so a card never starts music on someone's phone. If the saved speaker is missing, the §6.6 fallback applies. The saved speaker only changes in Speakers.
+- **Screen stays on while playing** (§9.5):
+  - While `is_playing` is true, the Dim and Screen off timers are held.
+  - Newly detected playback brings Dim back to Active.
+  - When playback pauses or stops, both timers restart from that moment.
+  - Music started elsewhere while the screen is off isn't seen, because Spotify isn't polled while dark (D14). The next wake (touch, card or BOOT) polls at once and picks it up.
 
 ---
 
@@ -721,6 +746,7 @@ Global overlays: Toasts, Confirm dialog, Offline banner, Re-link screen
 │ [  ⏮  ]   [  ⏯  ]   [  ⏭  ]   [  🔊  ]         │ 116–170 four 72×54 buttons
 └────────────────────────────────────────────────┘ 172
 ```
+When the music is playing on a device other than the saved speaker (§6.8), the chip reads `▶ Playing on Phone ▾`, and the controls act on that device.
 
 **Playback panel** (slides up over Now Playing; auto-closes after 6 s idle)
 ```
@@ -738,7 +764,7 @@ If the speaker doesn't support remote volume, the volume row is disabled with th
 │ 🔈 Kitchen Speaker ▾                      [≡]  │
 │              ((( ▭ )))                         │ gently pulsing card icon
 │          Tap a card to play                    │
-│  Last: Rumours                     [ ▶ Resume ]│ only if a paused session exists
+│  Last: Rumours                     [ ▶ Resume ]│ only if Spotify reports a paused session (§6.8); resumes on that session's device
 └────────────────────────────────────────────────┘
 ```
 
@@ -781,13 +807,17 @@ States: waiting for context / waiting for card / ready / writing (spinner, "Keep
 **About:** version, IP, `cardplayer.local`, Wi-Fi RSSI, Spotify user, days to re-link, NFC status, free heap, uptime.
 
 ### 9.4 BOOT button (GPIO0, active low; debounced in software)
-- **Short press:** play/pause. If the screen is off, it only wakes the screen.
+- **Short press:** play/pause, on the device that's playing (§6.8). If the screen is off, it only wakes the screen.
 - **Long press (1.5 s):** go to Now Playing / Idle (the "home" escape hatch).
 - **10 s hold while running:** factory-reset confirmation dialog, which still needs a tap.
 
 ### 9.5 Screen power and power saving
 
 A `PowerManager` in the app controller switches between three profiles. The Dim timer moves Active → Dim, and the Screen off timer moves Dim → Screen off. Touch, a card tap or BOOT returns to Active.
+
+**While music plays, the screen stays on** (D15, §6.8):
+- Both timers are held while `/me/player` reports `is_playing` on any device, and newly detected playback brings Dim back to Active.
+- When playback pauses or stops, the timers restart from that moment.
 
 | | Active | Dim | Screen off |
 |---|---|---|---|
@@ -807,7 +837,7 @@ A `PowerManager` in the app controller switches between three profiles. The Dim 
 4. Poll Spotify immediately.
 5. On a card wake, the TLS warm-up runs in parallel with the card read.
 
-Card taps still wake the device and play; see §5.4 for the screen-off latency target. The screen does not wake for track changes, because Spotify isn't polled while dark.
+Card taps still wake the device and play; see §5.4 for the screen-off latency target. While the screen is off, it doesn't wake for music started elsewhere or for track changes, because Spotify isn't polled while dark; the next wake picks them up.
 
 ### 9.6 Fonts and text
 - Generate LVGL fonts with `lv_font_conv` from **Inter** or **Noto Sans**:
@@ -859,11 +889,11 @@ Include a schema version key (`dev/schema`) for migrations. **Factory reset eras
 ---
 
 ## 12. Testing strategy
-- **Native unit tests** (`pio test -e native`), for pure modules with no Arduino headers:
+- **Unit tests** for pure modules with no Arduino headers: `pio test -e native` on the PC (needs a host gcc/g++), or the same tests on the board with `pio test -e test_device`:
   - `CardCodec`: URL/URI/Text parsing, query flags, invalid IDs, `intl-xx`, round trips;
   - Spotify response parsers against **recorded JSON fixtures** (player state with album/playlist/episode/null context, devices, errors, 429);
   - PKCE: base64url, SHA-256 test vectors;
-  - Backoff;
+  - Backoff; BOOT button gestures; settings sanitising; the app state machine (Phase 1);
   - Policies: same-card decision table, device fallback choice, shuffle policy.
 - **On-device serial console** (dev build): `nfc read`, `nfc write <url>`, `sp state`, `sp devices`, `sp play <uri>`, `wifi status`, `heap`. Speeds up spikes and debugging.
 - **Manual test script per phase** (`docs/test-checklist.md`), with the acceptance criteria below.
@@ -928,8 +958,10 @@ Each phase ends with a demoable build and its acceptance criteria met.
 - **Tasks**
   - `SpotifyClient` (§6.4) with filters, keep-alive and 429 handling; `SpotifyWorker` with adaptive poller (§6.5).
   - Idle, Now Playing and Playback panel (volume, shuffle, repeat); error mapping (§6.6); offline banner.
+  - Picking up playback from other devices: 5 s Idle check, paused-session Resume row, controls that follow the playing device (§6.8).
 - **Acceptance**
-  - Playing from the phone app shows on the device within 2 s.
+  - With the screen on, music started in the phone app shows Now Playing within 5 s; a paused session shows the Resume row instead.
+  - While music plays on the phone, the device's controls act on the phone, and a card tap still plays on the saved speaker.
   - Every control works and is reflected within 1 s.
   - Volume is disabled on unsupported speakers.
   - A 429 test (forced) backs off correctly.
@@ -968,7 +1000,7 @@ Each phase ends with a demoable build and its acceptance criteria met.
 ### Phase 8 — Polish and release
 - **Tasks**
   - Settings screen; About; BOOT button actions.
-  - `PowerManager` with Active / Dim / Screen off profiles (§9.5); dim/off timers with wake-swallow.
+  - `PowerManager` with Active / Dim / Screen off profiles (§9.5); dim/off timers with wake-swallow, held while music plays (§6.8).
   - Extended fonts and text normalisation.
   - Log viewer; coredump endpoint.
   - Performance pass (SPI 80 MHz test, LVGL buffer tuning).
@@ -977,6 +1009,7 @@ Each phase ends with a demoable build and its acceptance criteria met.
 - **Acceptance**
   - Soak passes.
   - Current draw measured and recorded for each power profile.
+  - The screen stays on while music plays, and dims after the set time once it pauses or stops.
   - A card tap from Screen off is accepted within 2.5 s p90.
   - All phase checklists re-run green.
   - A fresh user can go from box to first card played using only the on-screen instructions and the portal.
@@ -1004,7 +1037,8 @@ Each phase ends with a demoable build and its acceptance criteria met.
 | 3V3 brownout (Wi-Fi TX + PN532 RF + backlight) | Low-Med | High | Spike S1 measurement. Adding a bulk capacitor would break the "specified hardware only" rule, so the fallbacks are powering the module from VBUS (if its I/O stays 3.3 V) or reducing NFC polling duty |
 | Target speaker asleep / not listed | High | Med | Fallback dialog to the active device; guidance in the user guide |
 | pioarduino platform breakage on update | Low | Med | Pin the exact release URL; upgrade deliberately |
-| Rate limiting (429) | Low | Low | Adaptive polling + Retry-After |
+| Rate limiting (429) | Low | Low | Adaptive polling (1.5 s only for 2 min after an interaction while playing, otherwise 5 s) + Retry-After |
+| Screen on for hours while music plays (D15) | Certain | Low | USB-powered; the brightness setting applies. A "Keep screen on while playing" toggle can be added to Settings if it bothers anyone |
 | `WIFI_PS_MAX_MODEM` causes slow or dropped connections on some routers | Low | Low | Applied only while the screen is off; fall back to `WIFI_PS_MIN_MODEM` if spikes or the soak test show problems |
 | Non-Latin titles unreadable | Med | Low | Extended Latin/Greek/Cyrillic now; TinyTTF later |
 

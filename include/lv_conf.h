@@ -42,7 +42,7 @@
  * - LV_STDLIB_RTTHREAD:    RT-Thread implementation
  * - LV_STDLIB_CUSTOM:      Implement the functions externally
  */
-#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CLIB  /* Card Player: malloc puts large blocks in PSRAM */
+#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CUSTOM  /* Card Player: PSRAM heap, src/ui/LvglMemory.cpp (PLAN.md §5.5) */
 
 /** Possible values
  * - LV_STDLIB_BUILTIN:     LVGL's built in implementation
@@ -90,7 +90,7 @@
  *====================*/
 
 /** Default display refresh, input device read and animation step period. */
-#define LV_DEF_REFR_PERIOD  33      /**< [ms] */
+#define LV_DEF_REFR_PERIOD  16      /**< [ms] */  /* Card Player: press feedback under 50 ms (§9.1) */
 
 /** Default Dots Per Inch. Used to initialize default sizes such as widgets sized, style paddings.
  * (Not so important, you can adjust it to modify default sizes and spaces.) */
@@ -472,7 +472,7 @@
 
     /** - 1: Print log with 'printf';
      *  - 0: User needs to register a callback with `lv_log_register_print_cb()`. */
-    #define LV_LOG_PRINTF 1  /* Card Player */
+    #define LV_LOG_PRINTF 0  /* Card Player: routed to util/Log via lv_log_register_print_cb */
 
     /** Set callback to print logs.
      *  E.g `my_print`. The prototype should be `void my_print(lv_log_level_t level, const char * buf)`.
@@ -878,7 +878,7 @@
     #define LV_THEME_DEFAULT_GROW 1
 
     /** Default transition time in ms. */
-    #define LV_THEME_DEFAULT_TRANSITION_TIME 80
+    #define LV_THEME_DEFAULT_TRANSITION_TIME 0  /* Card Player: pressed state shows on the next frame */
 #endif /*LV_USE_THEME_DEFAULT*/
 
 /** A very simple theme that is a good starting point for a custom theme */
@@ -1112,7 +1112,7 @@
 
     /** 1: Show CPU usage and FPS count.
      *  - Requires `LV_USE_SYSMON = 1` */
-    #define LV_USE_PERF_MONITOR 1  /* Card Player: spike S1 */
+    #define LV_USE_PERF_MONITOR 1  /* Card Player: firmware hides it at boot; dev console "perf on" shows it */
     #if LV_USE_PERF_MONITOR
         #define LV_USE_PERF_MONITOR_POS LV_ALIGN_TOP_MID  /* Card Player: clear of corner buttons */
 

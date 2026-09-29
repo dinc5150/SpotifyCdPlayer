@@ -10,7 +10,7 @@
 #include "Display.h"
 #include "Touch.h"
 #include "pins.h"
-#include "../common/Console.h"
+#include "Console.h"
 
 namespace {
 

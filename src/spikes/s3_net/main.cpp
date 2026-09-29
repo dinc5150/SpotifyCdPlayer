@@ -10,7 +10,7 @@
 #include <WiFi.h>
 #include <time.h>
 
-#include "../common/Console.h"
+#include "Console.h"
 
 namespace {
 

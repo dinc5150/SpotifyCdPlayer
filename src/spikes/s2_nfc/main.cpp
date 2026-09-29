@@ -9,7 +9,7 @@
 #include <PN532/PN532_SPI/PN532_SPI.h>
 
 #include "pins.h"
-#include "../common/Console.h"
+#include "Console.h"
 
 namespace {
 
