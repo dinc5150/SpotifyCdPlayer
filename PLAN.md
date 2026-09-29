@@ -130,14 +130,14 @@ Set the PN532 V3 interface switches to **SPI: I0 = OFF/L, I1 = ON/H**. Check the
 | RSTO | not connected | This is a reset *output* on V3 modules |
 
 - **Why this layout:** it avoids strapping pin IO3, and pins 17–22 sit together at the end of the header so the harness is short. For the HSU fallback, reuse IO4 (ESP TX → PN532 RX) and IO5 (ESP RX ← PN532 TX) with the switches at L/L.
-- **SPI clock:** the PN532 maximum is 5 MHz. Force **≤ 2 MHz**; see spike S2.
+- **SPI clock:** the PN532 maximum is 5 MHz. The Seeed driver sets 2 MHz (`SPI_CLOCK_DIV8` is 2 MHz on Arduino core 3.3.12); spike S2 also tests 1 and 4 MHz.
 - **Power:** 3V3 keeps logic levels native. Spike S1 measures 3V3 rail droop with Wi-Fi TX, backlight at 100% and the RF field on. If it browns out, power the module from VBUS (5 V) **only** if the module's I/O stays at 3.3 V (verify with a meter).
 - **Mechanical:** the PN532's effective range is under 5 cm. Keep the antenna away from metal, the LCD's back and the USB cable. Mark the "tap here" spot on the enclosure.
 
 ### 3.4 Hardware notes and discrepancies to respect
 - The IDF BSP includes a QMI8658 IMU source, but the schematic has no IMU. Ignore it.
 - The vendor Arduino example drives the JD9853 with `Arduino_ST7789` plus a custom register init sequence (`lcd_reg_init`). Keep that sequence byte-for-byte. Column offset is 34 in portrait; **re-verify offsets after rotating to landscape** (spike S1).
-- The IDF demo runs the LCD at 80 MHz. Arduino_GFX defaults lower; try 80 MHz after bring-up.
+- The LCD runs stably at 80 MHz on Arduino_GFX (verified in spike S1: full-screen fill 12.6 ms vs 23.6 ms at 40 MHz; LVGL full redraw 38.5 ms vs 49.3 ms). Set the clock once at boot; re-clocking a running SPI bus has no effect.
 
 ---
 
@@ -165,7 +165,7 @@ Set the PN532 V3 interface switches to **SPI: I0 = OFF/L, I1 = ON/H**. Check the
 - Pros: reviewable diffs, no generator lock-in, easy to adapt to dynamic data.
 - Cons: no WYSIWYG. That's acceptable for about 10 simple screens.
 
-**Display driver: Arduino_GFX 1.5.9 + vendor JD9853 init (recommended)**
+**Display driver: Arduino_GFX 1.6.8 + vendor JD9853 init (recommended)**
 - Pros: exactly what Waveshare ships and tests; lowest bring-up risk.
 - Cons: blocking bitmap push, though that's trivial at 172×320: about 11 ms per full frame at 80 MHz.
 - Alternative: **esp_lcd + vendor `esp_lcd_jd9853` C component** copied into `lib/`. Gives async DMA flush, but the vendor proved it only in the IDF build. Keep it as a fallback if tearing or performance issues appear.
@@ -179,7 +179,7 @@ Set the PN532 V3 interface switches to **SPI: I0 = OFF/L, I1 = ON/H**. Check the
   - The only mainstream Arduino stack that bundles PN532 transport (SPI/I²C/HSU) with full **NDEF on MIFARE Classic**: MAD formatting, multi-sector read/write and clean.
   - Transport is swappable at compile time.
 - Cons:
-  - Older codebase with AVR-era SPI calls. `SPI_CLOCK_DIV8` means a different absolute frequency on ESP32, so the clock must be forced ≤ 2 MHz.
+  - Older codebase with AVR-era SPI calls. (Checked: on core 3.3.12 `SPI_CLOCK_DIV8` is 2 MHz, within the PN532 limit.) `NfcAdapter::begin()` halts forever if no PN532 answers, so check the firmware version first. Its `SAMConfig()`, `setPassiveActivationRetries()` and `setRFField()` report failure on success (they test `0 < responseLength`, but these replies carry no data), so send those commands directly and treat a non-negative length as success.
   - Verbose serial prints.
 - Mitigation: pin the commit, patch the SPI setup with `SPISettings(1 MHz, LSBFIRST, MODE0)` if needed, and wrap it behind our `NfcService`.
 - Alternative: **Adafruit_PN532**. Well maintained (SPI, I²C, UART, IRQ detection), but its NDEF helpers write a single sector with URLs of ≤ 38 chars. Our URLs are 45–53 bytes, so we'd have to write MAD and multi-sector NDEF ourselves. Keep it as the fallback transport if Seeed's SPI misbehaves.
@@ -242,13 +242,13 @@ Later: pull-based OTA from GitHub Releases.
 | Library | Version | Purpose |
 |---|---|---|
 | pioarduino platform-espressif32 | Arduino core 3.3.x / IDF 5.5.x (exact release URL) | Platform |
-| lvgl/lvgl | ~9.5.x | UI |
-| moononournation/GFX Library for Arduino | 1.5.9 (vendor-tested) | LCD driver |
+| lvgl/lvgl | 9.5.0 | UI |
+| moononournation/GFX Library for Arduino | 1.6.8 (1.5.9, the vendor-tested version, fails to compile on core ≥ 3.3.6) | LCD driver |
 | vendored `axs5106l` (Waveshare) | snapshot | Touch |
 | Seeed-Studio/Seeed_Arduino_NFC | pinned git commit | PN532 + NDEF |
-| bblanchon/ArduinoJson | ^7.4 | JSON (filters, PSRAM allocator) |
-| ESP32Async/AsyncTCP | ^3.4 | Async TCP |
-| ESP32Async/ESPAsyncWebServer | ^3.9 | Portal |
+| bblanchon/ArduinoJson | 7.4.3 | JSON (filters, PSRAM allocator) |
+| ESP32Async/AsyncTCP | 3.5.0 | Async TCP |
+| ESP32Async/ESPAsyncWebServer | 3.12.1 | Portal |
 | Core: WiFi, DNSServer, ESPmDNS, Preferences, Update, HTTPClient, NetworkClientSecure, mbedTLS (SHA-256) | core | |
 
 ---
@@ -340,7 +340,7 @@ sequenceDiagram
   A->>U: update track/artist/progress
 ```
 
-**Latency budget:** detection ≤ 250 ms, read ≤ 150 ms, API call ≤ 400 ms on a warm TLS connection. That gives **≤ 1.5 s p90** from tap to speaker, excluding the speaker's own start-up delay. On-screen feedback must appear within 200 ms of detection.
+**Latency budget:** detection ≤ 250 ms, read ≤ 150 ms (measured 83 ms), API call ≤ 500 ms on a warm TLS connection (measured 200–500 ms in spike S3; a new connection adds ~290 ms at 240 MHz, and `WIFI_PS_MAX_MODEM` adds ~200 ms, so wake to `MIN_MODEM` before calling). That gives **≤ 1.5 s p90** from tap to speaker, excluding the speaker's own start-up delay. On-screen feedback must appear within 200 ms of detection.
 
 **From the Screen off profile (§9.5), allow ≤ 2.5 s p90.** Card search runs every 750 ms, and the TLS connection has usually closed because Spotify polling stops while dark. On `CardDetected`, switch to the Active profile first (CPU 240 MHz, lighter Wi-Fi power save), then warm up TLS in parallel with the card read.
 
@@ -391,7 +391,7 @@ SpotifyCdPlayer2/
 default_envs = device
 
 [env]
-platform = https://github.com/pioarduino/platform-espressif32/releases/download/<PINNED_TAG>/platform-espressif32.zip
+platform = https://github.com/pioarduino/platform-espressif32/releases/download/55.03.312-1/platform-espressif32.zip
 framework = arduino
 board = esp32-s3-devkitc-1
 board_upload.flash_size = 16MB
@@ -409,12 +409,12 @@ build_flags =
   -DLV_CONF_INCLUDE_SIMPLE
   -Iinclude
 lib_deps =
-  lvgl/lvgl@~9.5.0
-  moononournation/GFX Library for Arduino@1.5.9
-  bblanchon/ArduinoJson@^7.4.0
-  ESP32Async/AsyncTCP@^3.4.0
-  ESP32Async/ESPAsyncWebServer@^3.9.0
-  https://github.com/Seeed-Studio/Seeed_Arduino_NFC.git#<PINNED_COMMIT>
+  lvgl/lvgl@9.5.0
+  moononournation/GFX Library for Arduino@1.6.8
+  bblanchon/ArduinoJson@7.4.3
+  ESP32Async/AsyncTCP@3.5.0
+  ESP32Async/ESPAsyncWebServer@3.12.1
+  https://github.com/Seeed-Studio/Seeed_Arduino_NFC.git#3a55a631f23e986babf5e5fa625cc43d1bf99897
 
 [env:device]
 build_type = release
@@ -446,7 +446,7 @@ build_src_filter = -<*>                         ; tests pull pure modules explic
   - Batch endpoints and artist top-tracks were removed.
   - Search is capped at 10 results.
   - Several fields were removed (e.g. `user.product`, `popularity`, `available_markets`).
-- **Spotify-owned playlists:** Spotify-owned editorial and algorithmic playlists have been restricted for apps created after Nov 2024. Playback from cards may fail; see spike S4.
+- **Spotify-owned playlists:** Spotify-owned editorial and algorithmic playlists have been restricted for apps created after Nov 2024. Spike S4 (2026-09-29): an editorial playlist **plays** from a `context_uri`; only its metadata (name) may be unavailable, so show "Playlist" when the name lookup fails.
 
 ### 6.2 Login flow: PKCE + static relay
 
@@ -487,7 +487,7 @@ sequenceDiagram
 - `user-read-private`
 - `playlist-read-private`
 - `playlist-read-collaborative`
-- `user-library-read` (Liked Songs fallback)
+- `user-library-read` (reserved; not needed now that Liked Songs plays as a context)
 - `user-read-playback-position` (podcast resume)
 
 **Browser notes (2026):**
@@ -519,16 +519,16 @@ sequenceDiagram
 | Repeat | `PUT /v1/me/player/repeat?state=off|context|track` | |
 | Names for write screen / non-album contexts | `GET /v1/playlists/{id}?fields=name,owner(id,display_name)`, `GET /v1/artists/{id}`, `GET /v1/shows/{id}` | Cache in a RAM LRU (32 entries) |
 | Account | `GET /v1/me` | id, display_name |
-| Show fallback | `GET /v1/shows/{id}/episodes?limit=1` | If a show `context_uri` isn't playable |
-| Liked Songs fallback | Saved-tracks library endpoint (verify post-2026 name) | If a collection `context_uri` isn't playable |
 | Tokens | `POST https://accounts.spotify.com/api/token` | `authorization_code` / `refresh_token` + `client_id` (PKCE, no secret) |
 
 **HTTP layer**
 - One persistent `NetworkClientSecure` to `api.spotify.com` with `HTTPClient::setReuse(true)`. Pre-warm it when a card is detected.
-- Validate certificates with the ESP x509 **CA bundle** (not single pinned roots, which rotate). Confirm the exact Arduino 3.x API in spike S3.
+- Validate certificates with the ESP x509 **CA bundle** (not single pinned roots, which rotate). Arduino core 3.3.12 compiles in the full bundle: `NetworkClientSecure::useBuiltinCACertBundle()`.
 - Timeouts: connect 5 s, read 5 s.
 - Retries: exponential backoff with jitter.
 - Honour `Retry-After` on `429`.
+- Send `Content-Length: 0` on body-less PUT/POST (pause, next, previous, volume, shuffle, repeat). Arduino's `HTTPClient` omits the header for an empty body, and Spotify answers `411 Length Required` (spike S4).
+- Keep one long-lived `HTTPClient` per host: its destructor closes the socket, so a per-request instance defeats keep-alive (spike S3).
 
 ### 6.5 Polling strategy (no push API exists)
 
@@ -546,7 +546,8 @@ sequenceDiagram
 | Condition | Detection | UX |
 |---|---|---|
 | No active device / target offline | `404 NO_ACTIVE_DEVICE`, or target missing from devices | If another device is active: "Play on *Living Room TV* instead?" [Yes] [Choose…]. Else open **Speakers** with the message "Pick a speaker" |
-| Restricted device | `is_restricted` or `403` | Greyed in the list: "Can't be controlled remotely" |
+| Restricted device | `is_restricted`, or a `403` not matched below | Greyed in the list: "Can't be controlled remotely" |
+| Volume not remotely controllable | `403 VOLUME_CONTROL_DISALLOW` (verified in spike S4), or `supports_volume: false` | Volume row disabled: "This speaker controls its own volume" |
 | Premium required | `403 PREMIUM_REQUIRED` | Blocking screen explaining Premium |
 | Token expired | `401` | Silent refresh, then retry once |
 | Login expired | `invalid_grant` | Re-link screen with QR |
@@ -561,8 +562,8 @@ sequenceDiagram
 | `…/album/{id}` | `context_uri: spotify:album:{id}` | `item.album.name` |
 | `…/playlist/{id}` | `context_uri: spotify:playlist:{id}` | `GET /playlists/{id}?fields=name` |
 | `…/artist/{id}` | `context_uri: spotify:artist:{id}` | `GET /artists/{id}` |
-| `…/show/{id}` | Try `context_uri: spotify:show:{id}`; fallback `uris:[latest episode]` (S4) | `item.show.name` |
-| `…/collection/tracks` (Liked Songs) | Try `context_uri: spotify:user:{userId}:collection`; fallback saved-tracks `uris` (S4) | "Liked Songs" |
+| `…/show/{id}` | `context_uri: spotify:show:{id}` (verified in spike S4) | `item.show.name` |
+| `…/collection/tracks` (Liked Songs) | `context_uri: spotify:user:{userId}:collection` (verified in spike S4) | "Liked Songs" |
 
 **Shuffle policy**
 - Album cards force shuffle off by default (setting "Albums always play in order").
@@ -592,7 +593,7 @@ sequenceDiagram
 - **Size:** worst case is about 62 bytes with TLV and record headers. That fits in sectors 1–2 (48 data bytes per sector). The library handles the multi-block layout.
 
 ### 7.2 Read path (`NfcService` + `CardCodec`)
-1. Search with `inListPassiveTarget` every 200 ms (750 ms with the screen off) with a 50–100 ms timeout. Switch the RF field off between searches (`RFConfiguration`). On a new UID, emit `CardDetected(uid)` immediately.
+1. Search with `inListPassiveTarget` every 200 ms (750 ms with the screen off) with a 50–100 ms timeout. Switch the RF field off between searches (`RFConfiguration`); the next `inListPassiveTarget` switches it back on by itself, with no settle delay needed. Use 1 passive-activation retry: an empty search then takes ~23 ms (vs ~29 ms with 2), and a present card was found 50/50 either way (spike S2). On a new UID, emit `CardDetected(uid)` immediately.
 2. Read the NDEF message and pass the first usable record to `CardCodec::parse()`.
 3. **`CardCodec::parse`** is pure, tolerant and unit-tested. It accepts:
    - URI records with prefix `0x00`, `0x03` (`http://`) or `0x04` (`https://`), plus Text records containing a link;
@@ -624,7 +625,7 @@ sequenceDiagram
    3. If both fail: "This card is locked (unknown keys)".
 5. **Verify:** re-read and compare the canonical URL. Show success (large ✓) or a retry prompt. Don't report success unless verification passes.
 6. **Overwrite guard:** if the card already holds a different Spotify link, ask "Replace *Rumours* with *Friday Night Mix*?" [Replace] [Cancel].
-7. **Spotify-owned playlist** (owner id `spotify`, or metadata `404`): warn "Spotify-made playlists may not play from cards" and allow it anyway.
+7. **Spotify-owned playlist** (owner id `spotify`, or metadata `404`): write it normally; these play from cards (spike S4). If the name lookup fails, label it "Playlist".
 8. **Write-mode timeout:** 3 min of inactivity, then return to Now Playing.
 
 ### 7.4 Robustness
@@ -957,7 +958,7 @@ Each phase ends with a demoable build and its acceptance criteria met.
 
 ### Phase 7 — Write card
 - **Tasks**
-  - Write-card screen and state machine (§7.3): context detection incl. album/show fallback and Liked Songs; overwrite guard; format/write/verify; per-card shuffle flag; Spotify-owned playlist warning.
+  - Write-card screen and state machine (§7.3): context detection incl. album/show fallback and Liked Songs; overwrite guard; format/write/verify; per-card shuffle flag; name fallback for Spotify-owned playlists.
 - **Acceptance**
   - Blank factory cards and NFC-Tools-formatted cards both write and verify.
   - A locked card shows the right message.
@@ -997,8 +998,7 @@ Each phase ends with a demoable build and its acceptance criteria met.
 | Spotify changes Dev Mode rules or endpoints again | Med | High | All API code isolated in `spotify/`; fixtures in tests; check the Spotify developer changelog before each release |
 | 6-month refresh-token expiry annoys users | Certain | Med | Countdown, 14-day banner, one-scan re-link |
 | Browsers start gating public → private navigations | Low-Med | Med | Relay's Continue button + copy link; device paste box; loopback mode |
-| Spotify-owned playlists (Daily Mix, Discover Weekly, editorial) not playable or readable by new apps | Med | Med | Spike S4; warn when writing; clear error on play |
-| Show / Liked Songs `context_uri` not accepted | Med | Low | Spike S4 fallbacks (latest-episode uris, saved-tracks uris) |
+| Spotify-owned playlists lose playback access in a future API change | Low | Medium | They play today (spike S4); show the normal "music isn't available" error if that changes |
 | Seeed NFC lib quirks on ESP32 core 3 (SPI clock/bit order) | Med | Med | Spike S2; patch SPI settings; fallback to HSU or to Adafruit_PN532 transport with our own NDEF glue |
 | Vendor pin/driver inconsistencies (LCD RST, touch INT/RST, landscape offsets) | Med | Low | Schematic-first `pins.h`; spike S1 |
 | 3V3 brownout (Wi-Fi TX + PN532 RF + backlight) | Low-Med | High | Spike S1 measurement. Adding a bulk capacitor would break the "specified hardware only" rule, so the fallbacks are powering the module from VBUS (if its I/O stays 3.3 V) or reducing NFC polling duty |
@@ -1024,7 +1024,7 @@ Each phase ends with a demoable build and its acceptance criteria met.
 
 **S2 — NFC**
 - Seeed_Arduino_NFC `PN532_SPI` on `SPIClass(HSPI)` begun with IO4/5/6/7 before `nfc.begin()`.
-- Confirm LSB-first mode and force ≤ 2 MHz.
+- Confirm LSB-first mode and confirm the default 2 MHz clock.
 - Tasks: UID poll; `format()`; `write()` of a 53-byte URI; `read()`; `clean()`.
 - Test cards: a factory blank and an NFC-Tools-formatted card.
 - Measure read time.
@@ -1032,7 +1032,7 @@ Each phase ends with a demoable build and its acceptance criteria met.
 - Fallback trial: HSU on IO4/IO5.
 
 **S3 — TLS**
-- `NetworkClientSecure` + CA bundle API on core 3.3.x.
+- `NetworkClientSecure::useBuiltinCACertBundle()` on core 3.3.12.
 - Keep-alive reuse across 20 calls.
 - Measure handshake time and per-call latency to `api.spotify.com`.
 - Measure internal heap per session.
@@ -1043,7 +1043,7 @@ Each phase ends with a demoable build and its acceptance criteria met.
 - GET playlist metadata for each.
 - Transfer to each device type available.
 - Volume on unsupported devices.
-- Confirm the post-Feb-2026 saved-tracks endpoint path for the Liked Songs fallback.
+- ~~Confirm the post-Feb-2026 saved-tracks endpoint path for the Liked Songs fallback.~~ Not needed: Liked Songs plays as a context.
 
 **S5 — Relay**
 - Deploy `relay/index.html` on GitHub Pages; register the redirect.

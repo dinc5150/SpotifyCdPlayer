@@ -1,0 +1,10 @@
+{
+  "name": "board",
+  "version": "0.1.0",
+  "description": "Hardware layer for the Waveshare ESP32-S3-Touch-LCD-1.47: JD9853 display, AXS5106L touch, backlight.",
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": [
+    { "name": "GFX Library for Arduino", "owner": "moononournation", "version": "1.6.8" }
+  ]
+}
