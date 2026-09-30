@@ -1,6 +1,6 @@
-# Card Player — NFC Spotify Controller: Implementation Plan
+# Spotify CD Player — NFC Spotify Controller: Implementation Plan
 
-Status: **Phase 0 done (gate G1 passed); Phase 1 in progress** · Date: 2026-09-29
+Status: **Phases 0–1 done; Phase 2 (connectivity and portal) in hardware testing** · Date: 2026-09-29
 Target hardware: Waveshare ESP32-S3-Touch-LCD-1.47 + PN532 NFC V3 module + MIFARE Classic 1K cards (nothing else)
 
 ---
@@ -63,7 +63,7 @@ The "Recommended" rows are my calls, each with pros and cons in §4. Change any 
 2. **Spotify developer app** at developer.spotify.com/dashboard:
    - APIs used: Web API.
    - Redirect URIs:
-     - `https://<you>.github.io/cardplayer-relay/` (the relay, §6.2)
+     - `https://<you>.github.io/spotifycd-relay/` (the relay, §6.2)
      - `http://127.0.0.1:8888/callback` (fallback)
    - Copy the **Client ID**. No client secret is needed because the flow uses PKCE.
    - Avoid the word "Spotify" in the app name; Spotify's developer branding rules restrict it.
@@ -292,8 +292,8 @@ Later: pull-based OTA from GitHub Releases.
 | app (event loop) | 1 | 4 | 6 KB | Event queue |
 | spotify worker | 0 | 3 | 12 KB (TLS) | Command queue + poll timer |
 | nfc | 0 | 2 | 6 KB | Every 200 ms, or 750 ms with the screen off (50–100 ms `inListPassiveTarget` timeout) |
-| net (Wi-Fi supervisor, DNS in AP mode) | 0 | 2 | 4 KB | 100 ms |
-| AsyncTCP (library) | 0 | default | default | — |
+| net (Wi-Fi supervisor; the captive DNS runs on AsyncUDP) | 0 | 2 | 6 KB | 100 ms + command queue |
+| AsyncTCP (library; web portal) | 0 (`CONFIG_ASYNC_TCP_RUNNING_CORE=0`) | 10 (library default) | 16 KB (library default) | — |
 
 A task watchdog covers ui, app, spotify and nfc.
 
@@ -305,7 +305,9 @@ stateDiagram-v2
   Boot --> SetupAP: no saved Wi-Fi
   Boot --> WifiConnecting: saved Wi-Fi
   SetupAP --> WifiConnecting: credentials submitted
-  WifiConnecting --> SetupAP: failed x3 or user chose Set up network
+  WifiConnecting --> SetupAP: submitted network failed, saved networks failed for 10 min, or user chose Set up network
+  SetupAP --> Ready: a saved network reconnects in the background
+  Offline --> SetupAP: saved networks failed for 10 min, or user chose Set up network
   WifiConnecting --> NeedSpotifyLink: connected, no refresh token
   WifiConnecting --> Ready: connected, token present
   NeedSpotifyLink --> Ready: linked
@@ -374,13 +376,13 @@ SpotifyCdPlayer2/
                 screens/ Boot Setup LinkSpotify Idle NowPlaying PlaybackPanel Menu Speakers WriteCard Wifi Account Settings About
     nfc/        NfcService.cpp CardCodec.{h,cpp}   ← CardCodec is pure logic (unit-tested)
     spotify/    SpotifyAuth.cpp (PKCE, tokens) SpotifyClient.cpp (REST) SpotifyWorker.cpp Models.h Parsers.cpp (pure, unit-tested)
-    net/        WifiSupervisor.cpp SetupAp.cpp Portal.cpp Api.cpp Mdns.cpp TimeSync.cpp Ota.cpp
+    net/        WifiSupervisor.cpp (Wi-Fi, setup AP + captive DNS, mDNS, NTP) WifiPolicy.cpp (pure) Portal.cpp Ota.cpp WebAssets.h (generated)
     storage/    Settings.{h,cpp}
     util/       Log.cpp ButtonGesture.cpp (pure) Backoff.cpp (pure) Base64Url.cpp Sha256.cpp Uri.cpp
     dev/        DevConsole.cpp  ← serial console, dev build only
   lib/board/                  ← display (Arduino_GFX + JD9853 init), AXS5106L touch (from the Waveshare driver), backlight
   lib/console/                ← line-based serial console (spikes + dev build)
-  web/                        ← portal source (index.html, setup.html, app.js, style.css)
+  web/                        ← portal source (index.html, setup.html, manage.html, app.js, style.css)
   relay/index.html            ← GitHub Pages OAuth relay (§6.2)
   .github/workflows/pages.yml ← deploys relay/
   scripts/embed_web.py        ← gzip web/ → src/net/web_assets.h (PlatformIO pre-script)
@@ -462,7 +464,7 @@ sequenceDiagram
   participant P as Phone browser
   participant D as Device (http://<lan-ip>)
   participant SP as accounts.spotify.com
-  participant R as Relay (https://<you>.github.io/cardplayer-relay/)
+  participant R as Relay (https://<you>.github.io/spotifycd-relay/)
   P->>D: open /spotify/login (QR on device screen)
   D->>D: verifier = 64 random chars (esp_random), challenge = b64url(SHA256(verifier)), new nonce
   D-->>P: 302 → SP /authorize?client_id&response_type=code&redirect_uri=R&code_challenge_method=S256&code_challenge&scope&state=nonce~ip~port
@@ -662,45 +664,54 @@ Music started anywhere on the account (phone app, desktop app, a speaker's own a
 ## 8. Wi-Fi, setup and web portal
 
 ### 8.1 First boot
-1. **No saved Wi-Fi.** Start SoftAP `CardPlayer-XXXX` (last 4 hex digits of the MAC) with a random 8-character WPA2 password, generated once and stored.
+1. **No saved Wi-Fi.** Start SoftAP `SpotifyCD-XXXX` (last 4 hex digits of the MAC) with a random 8-character WPA2 password, generated once and stored.
    - Screen **Setup 1/3** shows a Wi-Fi QR code (`WIFI:T:WPA;S:…;P:…;;`) plus the SSID and password in text.
 2. **Phone joins the AP.** The captive portal opens automatically. DNS answers every name with 192.168.4.1, and the OS probe URLs are answered (`/generate_204`, `/hotspot-detect.html`, `/connecttest.txt`, `/ncsi.txt`, `/fwlink`).
    - Screen **Setup 2/3** shows a QR for `http://192.168.4.1/`.
-3. **Portal wizard**
-   1. Pick a network from the scan list and enter the password. Hidden SSIDs are supported.
-   2. Device name (default "Card Player"; mDNS `cardplayer.local`).
-   3. Admin password (optional, recommended).
-   4. Spotify Client ID, with inline instructions and a copyable relay redirect URI.
-4. **Device joins the network** (AP+STA during the attempt, so the phone sees the result).
-   - Success: the portal shows the LAN IP.
-   - Failure: "Wrong password?" and back to step 3.1.
+3. **Portal wizard** (`/setup`). The network is collected first but joined last, because joining can move the AP to another channel and briefly drop the phone.
+   1. Pick a network from the scan list and enter the password. Hidden SSIDs are typed in.
+   2. Device name (default "Spotify CD Player", shown on the device), web address (default `spotify-cd`, i.e. `http://spotify-cd.local/`; separate from the name so renaming doesn't move the address, and a second device just picks another one), and an optional admin password.
+   3. Spotify Client ID and relay URL, with inline instructions and the redirect URI to add. Can be skipped and set later under `/manage`.
+4. **Device joins the network** (AP+STA during the attempt; the page polls `/api/status` and tolerates the phone dropping off the AP for a moment).
+   - Success: the portal shows `http://<web address>.local/` and the LAN IP. The AP stays up 2 more minutes, then stops (until Phase 3, when it stays up through Link Spotify).
+   - Failure: the reason in words ("Wrong password?", "Network not found") and back to step 1. A network entered in the portal gets one attempt (15 s); it's saved only once it connects.
 5. **Screen Setup 3/3 — Link Spotify.** QR for `http://<lan-ip>/spotify/login`, with the text "Reconnect your phone to <home Wi-Fi>, then scan". After the link succeeds the AP shuts down and the device goes to Idle.
 
 ### 8.2 Later Wi-Fi changes
 - **Menu → Wi-Fi** shows SSID, signal, IP, and a **[Set up network]** button. That starts the AP+STA portal again and keeps the current connection while you add or switch networks. Up to 3 networks are saved; the strongest known one is used.
 - **Supervisor**
-  - Auto-reconnect with backoff (1 s → 60 s).
+  - Auto-reconnect with backoff (1 s → 60 s). Each round tries the saved networks strongest-first (a scan decides; networks not seen are tried last, as they may be hidden), 15 s each.
   - After 2 min offline, the Offline banner offers [Retry] [Set up network].
-  - The AP never starts on its own after first setup unless all saved networks have failed for 10 min. That avoids surprise open APs.
+  - The AP never starts on its own after first setup unless all saved networks have failed for 10 min, at boot or after a drop. That avoids surprise APs. Until then the Connecting screen offers [Set up network].
+  - While a phone is connected to the setup AP, background retries pause: trying a network switches channel and would keep knocking the phone off.
+  - "Set up network" from the Wi-Fi screen stops the AP after 15 min without a client, or on [Stop setup].
 
 ### 8.3 Portal routes
 
-| Route | Purpose | Auth |
-|---|---|---|
-| `/` | Dashboard: now playing, target speaker, Wi-Fi, Spotify link status, firmware version | Open |
-| `/setup` | First-run wizard | Open in AP mode only |
-| `/wifi` + `GET /api/wifi/scan`, `POST /api/wifi` | Manage networks | Admin |
-| `/spotify` | Client ID, relay URL, login method, link / relink / unlink, days to expiry | Admin (except `login`/`callback`) |
-| `/spotify/login` | Start PKCE flow (302 to Spotify) | Open (LAN) |
-| `/spotify/callback` | Receive code + state | Nonce-protected |
-| `POST /api/spotify/paste` | Manual link fallback | Admin |
-| `/settings` + `GET/POST /api/settings` | Brightness, timers, card behaviours | Admin |
-| `/update` (`POST` multipart) | OTA firmware upload | Admin |
-| `GET /api/status` | JSON: state, wifi, spotify, playback, heap, uptime | Open |
-| `GET /api/logs` | Ring-buffer logs | Admin |
-| `POST /api/reboot`, `POST /api/factory-reset` | Maintenance | Admin |
+Pages are plain HTML/JS in `web/`, gzipped into the firmware at build time (`scripts/embed_web.py`, 7.7 KB). Three pages: `/` (status), `/setup` (wizard) and `/manage` (everything an admin changes), rather than one page per topic.
 
-**Admin auth:** HTTP Digest via ESPAsyncWebServer. The password is stored as salted SHA-256; a blank password disables auth, with a warning shown.
+| Route | Purpose | Auth | Phase |
+|---|---|---|---|
+| `/` | Status: device state, Wi-Fi, address, Spotify link, firmware, uptime, rollback warning | Open | 2 |
+| `/setup` | First-run wizard | Admin (open on the setup AP) | 2 |
+| `/manage` | Wi-Fi networks (add, switch, forget), device name, admin password, Spotify Client ID + relay URL, firmware upload, logs, restart, factory reset | Admin | 2 |
+| `GET /api/status` | JSON: state, wifi, spotify, OTA state, heap, uptime | Open | 2 |
+| `GET /api/wifi`, `POST /api/wifi`, `POST /api/wifi/forget` | Saved SSIDs (never passwords) + scan; try a network; forget one | Admin | 2 |
+| `GET/POST /api/device` | Name, web address, admin password, Client ID, relay URL (only fields sent change; the reply has the cleaned-up web address) | Admin | 2 |
+| `POST /update` (multipart) | OTA firmware upload | Admin | 2 |
+| `GET /api/logs` | Ring-buffer logs | Admin | 2 |
+| `POST /api/reboot`, `POST /api/factory-reset` | Maintenance (the page confirms twice for reset) | Admin | 2 |
+| `/spotify/login` | Start PKCE flow (302 to Spotify) | Open (LAN) | 3 |
+| `/spotify/callback` | Receive code + state | Nonce-protected | 3 |
+| `POST /api/spotify/paste`, link / relink / unlink, login method | Spotify section of `/manage` | Admin | 3 |
+| `GET/POST /api/settings` | Brightness, timers, card behaviours (section of `/manage`) | Admin | 8 |
+
+**Captive portal:** on the setup AP, any request for a host other than 192.168.4.1 (the phones' connectivity checks) is redirected to `/setup`, so the phone opens it as a sign-in page.
+
+**Admin auth:** HTTP Digest via ESPAsyncWebServer, user `admin`, realm `Spotify CD Player`.
+- Stored as the Digest HA1 hash, MD5(`admin:Spotify CD Player:<password>`), never the password itself. (Digest has to be checked against HA1, so a salted SHA-256 can't be used; HA1 is password-equivalent for this device only.)
+- A blank password disables auth, and the status page shows a warning.
+- Phones on the setup AP skip auth: joining it already needed the password shown on the device's screen.
 
 ### 8.4 Security notes
 - No client secret exists anywhere (PKCE). The Client ID is not secret.
@@ -709,6 +720,7 @@ Music started anywhere on the account (phone app, desktop app, a speaker's own a
 - The setup AP is WPA2 with a per-device random password.
 - The refresh token sits in plain NVS. Anyone with physical access plus a USB flasher could read it, which is acceptable for a home device. Its scope is limited to playback and library read. NVS encryption was considered and rejected: it needs flash encryption, which complicates development flashing.
 - OTA uploads check the image magic and let `Update` handle the partition swap. The previous slot remains for rollback (`esp_ota_mark_app_valid_cancel_rollback` after a healthy boot).
+- The upload handler checks the admin login itself before writing any byte: ESPAsyncWebServer runs its auth middleware only after the whole body has arrived.
 
 ---
 
@@ -804,7 +816,7 @@ States: waiting for context / waiting for card / ready / writing (spinner, "Keep
 - Albums always in order (toggle)
 - Factory reset (confirm)
 
-**About:** version, IP, `cardplayer.local`, Wi-Fi RSSI, Spotify user, days to re-link, NFC status, free heap, uptime.
+**About:** version, IP, `<web address>.local`, Wi-Fi RSSI, Spotify user, days to re-link, NFC status, free heap, uptime.
 
 ### 9.4 BOOT button (GPIO0, active low; debounced in software)
 - **Short press:** play/pause, on the device that's playing (§6.8). If the screen is off, it only wakes the screen.
@@ -854,9 +866,10 @@ Card taps still wake the device and play; see §5.4 for the screen-off latency t
 | Namespace | Key | Type | Default |
 |---|---|---|---|
 | `wifi` | `n`, `s0..s2`, `p0..p2` | u8, str | 0 |
-| `dev` | `name` | str | "Card Player" |
+| `dev` | `name` | str | "Spotify CD Player" |
+| `dev` | `host` | str (web address: mDNS + DHCP hostname; typed text is cleaned to lowercase letters, digits and hyphens, ".local" dropped) | "spotify-cd" |
 | `dev` | `ap_pw` | str | random 8 chars |
-| `dev` | `admin` | str (salt:sha256) | empty |
+| `dev` | `admin` | str (Digest HA1, 32 hex) | empty |
 | `sp` | `client_id` | str | — |
 | `sp` | `relay_url` | str | — |
 | `sp` | `login_mode` | u8 (0 relay, 1 loopback) | 0 |
@@ -879,7 +892,7 @@ Include a schema version key (`dev/schema`) for migrations. **Factory reset eras
 
 ## 11. Resilience checklist
 - Task watchdog on all app tasks; coredump to flash, downloadable via `/api/coredump`.
-- OTA rollback: mark the app valid only after Wi-Fi, UI and NFC come up healthy.
+- OTA rollback: the bootloader has rollback enabled. The firmware overrides the core's `verifyRollbackLater()`, and marks a new image valid after 30 s in Ready, NeedSpotifyLink or SetupAP (the UI and Wi-Fi or the setup portal are up); NFC health joins the check in Phase 5. A reboot before that returns to the previous image. `env:ota_crash_test` builds a deliberately bad image for testing.
 - Wi-Fi drop: API commands fail fast with a toast. The poller pauses and resumes on reconnect.
 - TLS reconnect: if the keep-alive socket is closed, reconnect transparently once.
 - Heap guards: refuse or skip non-essential work (name lookups) if internal free heap is under 40 KB, and log it.

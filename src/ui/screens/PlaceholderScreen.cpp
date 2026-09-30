@@ -16,13 +16,10 @@ struct Info {
 };
 
 const Info kScreens[] = {
-    {app::ScreenId::Setup, "Set up Wi-Fi", 2, false},
-    {app::ScreenId::Connecting, "Connecting to Wi-Fi", 2, false},
     {app::ScreenId::LinkSpotify, "Link Spotify", 3, false},
     {app::ScreenId::NowPlaying, "Now Playing", 4, false},
     {app::ScreenId::Speakers, "Choose speaker", 6, true},
     {app::ScreenId::WriteCard, "Write a card", 7, true},
-    {app::ScreenId::Wifi, "Wi-Fi", 2, true},
     {app::ScreenId::Spotify, "Spotify account", 3, true},
     {app::ScreenId::Settings, "Settings", 8, true},
     {app::ScreenId::About, "About", 8, true},

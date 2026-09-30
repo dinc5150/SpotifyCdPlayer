@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manage Spotify CD Player</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body data-page="manage">
+<main>
+  <header>
+    <h1>Manage</h1>
+    <a href="/">Status</a>
+  </header>
+
+  <section>
+    <h2>Wi-Fi</h2>
+    <p class="muted">Saved networks (up to 3; the strongest one in range is used):</p>
+    <ul id="saved" class="networks"></ul>
+    <label>Add or switch network</label>
+    <ul id="scan" class="networks"></ul>
+    <label for="ssid">Network name</label>
+    <input id="ssid" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="off">
+    <button id="add-network">Connect</button>
+    <p id="wifi-result" class="muted"></p>
+  </section>
+
+  <section>
+    <h2>Device</h2>
+    <label for="name">Name</label>
+    <input id="name" type="text" maxlength="32">
+    <label for="host">Web address</label>
+    <div class="suffix"><input id="host" type="text" maxlength="40" autocapitalize="off" spellcheck="false"><span>.local</span></div>
+    <p class="muted">A new address works within about a minute; the old one stops.</p>
+    <label for="admin">New admin password (at least 6 characters)</label>
+    <input id="admin" type="password" autocomplete="new-password">
+    <label for="admin2">Repeat it</label>
+    <input id="admin2" type="password" autocomplete="new-password">
+    <label class="row"><input id="admin-clear" type="checkbox"> Remove the admin password</label>
+    <p id="admin-state" class="muted"></p>
+
+    <h2 style="margin-top:18px">Spotify app</h2>
+    <label for="client-id">Client ID</label>
+    <input id="client-id" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <label for="relay-url">Login relay page</label>
+    <input id="relay-url" type="url" autocapitalize="off" spellcheck="false">
+    <button id="save-device">Save</button>
+    <p id="device-result" class="muted"></p>
+  </section>
+
+  <section>
+    <h2>Firmware</h2>
+    <p class="muted">Running version <span id="fw"></span>. Upload a <code>firmware.bin</code> built for this device.</p>
+    <p id="rolledback" class="error hidden">The last update didn't start properly and was rolled back.</p>
+    <input id="firmware" type="file" accept=".bin">
+    <progress id="upload-progress" class="hidden" value="0" max="1"></progress>
+    <button id="upload">Install</button>
+    <p id="upload-result" class="muted"></p>
+  </section>
+
+  <section>
+    <h2>Logs</h2>
+    <button id="load-logs" class="secondary">Show recent log</button>
+    <pre id="logs" class="hidden"></pre>
+  </section>
+
+  <section>
+    <h2>Maintenance</h2>
+    <div class="row">
+      <button id="reboot" class="secondary">Restart</button>
+      <button id="factory-reset" class="danger">Factory reset</button>
+    </div>
+    <p id="maintenance-result" class="muted"></p>
+  </section>
+</main>
+</body>
+</html>

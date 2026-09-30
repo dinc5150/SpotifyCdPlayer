@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Set up Spotify CD Player</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body data-page="setup">
+<main>
+  <header><h1>Set up Spotify CD Player</h1></header>
+  <div class="steps"><span></span><span></span><span></span><span></span></div>
+
+  <section id="step-wifi">
+    <h2>1. Your Wi-Fi</h2>
+    <p class="muted">Pick your home network. For a hidden network, type its name.</p>
+    <ul id="scan" class="networks"></ul>
+    <label for="ssid">Network name</label>
+    <input id="ssid" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="off">
+    <p id="wifi-error" class="error"></p>
+    <button id="wifi-next" disabled>Next</button>
+  </section>
+
+  <section id="step-device" class="hidden">
+    <h2>2. This device</h2>
+    <label for="name">Name</label>
+    <input id="name" type="text" maxlength="32">
+    <label for="host">Web address</label>
+    <div class="suffix"><input id="host" type="text" maxlength="40" autocapitalize="off" spellcheck="false"><span>.local</span></div>
+    <p class="muted">Where to find this page later. Give each device its own if you have more than one.</p>
+    <label for="admin">Admin password (optional, recommended; at least 6 characters)</label>
+    <input id="admin" type="password" autocomplete="new-password">
+    <label for="admin2">Repeat it</label>
+    <input id="admin2" type="password" autocomplete="new-password">
+    <p class="muted">Protects Wi-Fi, settings and updates from others on your network. Username: <code>admin</code>.</p>
+    <p id="device-error" class="error"></p>
+    <div class="row">
+      <button id="device-back" class="secondary">Back</button>
+      <button id="device-next">Next</button>
+    </div>
+  </section>
+
+  <section id="step-spotify" class="hidden">
+    <h2>3. Spotify app</h2>
+    <p class="muted">
+      The device talks to Spotify through your own free developer app.
+      At <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a>,
+      create an app with the Web API, add the redirect URI below, and paste its Client ID here.
+      You can also do this later under Manage.
+    </p>
+    <label for="client-id">Client ID</label>
+    <input id="client-id" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <label for="relay-url">Login relay page (your GitHub Pages address)</label>
+    <input id="relay-url" type="url" placeholder="https://you.github.io/spotifycd-relay/" autocapitalize="off" spellcheck="false">
+    <p class="muted">Redirect URI to add in the Spotify app: <span id="redirect-uri" class="copy">https://&lt;you&gt;.github.io/&lt;repo&gt;/</span></p>
+    <p id="spotify-error" class="error"></p>
+    <div class="row">
+      <button id="spotify-back" class="secondary">Back</button>
+      <button id="spotify-skip" class="secondary">Later</button>
+      <button id="spotify-next">Save and connect</button>
+    </div>
+  </section>
+
+  <section id="step-connect" class="hidden">
+    <h2>4. Connecting</h2>
+    <div id="connect-progress">
+      <p>Joining <b id="connect-ssid"></b>…</p>
+      <p class="muted">Your phone may drop off the setup Wi-Fi for a moment. If it does, rejoin it; this page keeps checking.</p>
+      <progress></progress>
+    </div>
+    <div id="connect-done" class="hidden">
+      <p class="ok">Connected.</p>
+      <p>Reconnect your phone to <b id="home-ssid"></b>. The device is then at <span id="device-url" class="copy"></span></p>
+      <p class="muted">The setup Wi-Fi turns off in a couple of minutes.</p>
+    </div>
+    <div id="connect-failed" class="hidden">
+      <p class="error" id="connect-error"></p>
+      <button id="connect-retry">Try again</button>
+    </div>
+  </section>
+</main>
+</body>
+</html>

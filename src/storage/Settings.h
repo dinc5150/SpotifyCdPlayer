@@ -16,9 +16,10 @@ struct WifiNetwork {
 };
 
 struct DeviceSettings {
-  String name = "Card Player";
+  String name = "Spotify CD Player";
+  String hostname = "spotify-cd";  // Web name: http://<hostname>.local/ (mDNS and DHCP)
   String apPassword;  // Setup AP (WPA2), generated on first boot
-  String adminHash;   // "salt:sha256", empty = no admin password
+  String adminHash;   // Digest HA1, MD5("admin:<realm>:<password>"); empty = no admin password
 };
 
 struct SpotifySettings {

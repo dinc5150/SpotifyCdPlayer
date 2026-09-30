@@ -7,6 +7,7 @@ void runBackoffTests();
 void runButtonGestureTests();
 void runSettingsRulesTests();
 void runStateMachineTests();
+void runWifiPolicyTests();
 
 void setUp() {}
 void tearDown() {}
@@ -17,6 +18,7 @@ static int runAll() {
   runButtonGestureTests();
   runSettingsRulesTests();
   runStateMachineTests();
+  runWifiPolicyTests();
   return UNITY_END();
 }
 

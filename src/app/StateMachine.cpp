@@ -1,8 +1,7 @@
 #include "app/StateMachine.h"
 
+#include <cstddef>
 #include <cstring>
-
-#include "config.h"
 
 namespace app {
 
@@ -47,28 +46,25 @@ bool apply(State &s, Trigger trigger, int32_t arg) {
   switch (trigger) {
     case Trigger::BootDone:
       if (s.phase != Phase::Boot) return false;
-      s.wifiFailures = 0;
       return setPhase(s, arg ? Phase::WifiConnecting : Phase::SetupAP);
 
     case Trigger::WifiSubmitted:
       if (s.phase != Phase::SetupAP) return false;
-      s.wifiFailures = 0;
       return setPhase(s, Phase::WifiConnecting);
 
+    // The Wi-Fi supervisor decides when to give up (§8.2): a network just
+    // entered in the portal fails once; saved networks only after 10 min.
     case Trigger::WifiFailed:
-      if (s.phase != Phase::WifiConnecting) return false;
-      if (++s.wifiFailures < config::kWifiFailuresBeforeSetup) return true;
-      s.wifiFailures = 0;
+      if (s.phase != Phase::WifiConnecting && s.phase != Phase::Offline) return false;
       return setPhase(s, Phase::SetupAP);
 
     case Trigger::SetUpNetwork:
       if (s.phase != Phase::WifiConnecting && s.phase != Phase::Offline) return false;
-      s.wifiFailures = 0;
       return setPhase(s, Phase::SetupAP);
 
+    // SetupAP keeps retrying saved networks in the background, so it can connect too.
     case Trigger::WifiConnected:
-      if (s.phase != Phase::WifiConnecting) return false;
-      s.wifiFailures = 0;
+      if (s.phase != Phase::WifiConnecting && s.phase != Phase::SetupAP) return false;
       s.view = View::Idle;
       return setPhase(s, arg ? Phase::Ready : Phase::NeedSpotifyLink);
 

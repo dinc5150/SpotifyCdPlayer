@@ -1,5 +1,5 @@
-/* LVGL 9.5.0 configuration for Card Player.
- * Generated from lv_conf_template.h; changed options are marked "Card Player". */
+/* LVGL 9.5.0 configuration for Spotify CD Player.
+ * Generated from lv_conf_template.h; changed options are marked "Spotify CD Player". */
 /**
  * @file lv_conf.h
  * Configuration file for v9.5.0
@@ -42,7 +42,7 @@
  * - LV_STDLIB_RTTHREAD:    RT-Thread implementation
  * - LV_STDLIB_CUSTOM:      Implement the functions externally
  */
-#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CUSTOM  /* Card Player: PSRAM heap, src/ui/LvglMemory.cpp (PLAN.md §5.5) */
+#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CUSTOM  /* Spotify CD Player: PSRAM heap, src/ui/LvglMemory.cpp (PLAN.md §5.5) */
 
 /** Possible values
  * - LV_STDLIB_BUILTIN:     LVGL's built in implementation
@@ -90,7 +90,7 @@
  *====================*/
 
 /** Default display refresh, input device read and animation step period. */
-#define LV_DEF_REFR_PERIOD  16      /**< [ms] */  /* Card Player: press feedback under 50 ms (§9.1) */
+#define LV_DEF_REFR_PERIOD  16      /**< [ms] */  /* Spotify CD Player: press feedback under 50 ms (§9.1) */
 
 /** Default Dots Per Inch. Used to initialize default sizes such as widgets sized, style paddings.
  * (Not so important, you can adjust it to modify default sizes and spaces.) */
@@ -459,7 +459,7 @@
  *-----------*/
 
 /** Enable log module */
-#define LV_USE_LOG 1  /* Card Player */
+#define LV_USE_LOG 1  /* Spotify CD Player */
 #if LV_USE_LOG
     /** Set value to one of the following levels of logging detail:
      *  - LV_LOG_LEVEL_TRACE    Log detailed information.
@@ -472,7 +472,7 @@
 
     /** - 1: Print log with 'printf';
      *  - 0: User needs to register a callback with `lv_log_register_print_cb()`. */
-    #define LV_LOG_PRINTF 0  /* Card Player: routed to util/Log via lv_log_register_print_cb */
+    #define LV_LOG_PRINTF 0  /* Spotify CD Player: routed to util/Log via lv_log_register_print_cb */
 
     /** Set callback to print logs.
      *  E.g `my_print`. The prototype should be `void my_print(lv_log_level_t level, const char * buf)`.
@@ -656,11 +656,11 @@
 #define LV_FONT_MONTSERRAT_10 0
 #define LV_FONT_MONTSERRAT_12 0
 #define LV_FONT_MONTSERRAT_14 1
-#define LV_FONT_MONTSERRAT_16 1  /* Card Player */
+#define LV_FONT_MONTSERRAT_16 1  /* Spotify CD Player */
 #define LV_FONT_MONTSERRAT_18 0
 #define LV_FONT_MONTSERRAT_20 0
 #define LV_FONT_MONTSERRAT_22 0
-#define LV_FONT_MONTSERRAT_24 1  /* Card Player */
+#define LV_FONT_MONTSERRAT_24 1  /* Spotify CD Player */
 #define LV_FONT_MONTSERRAT_26 0
 #define LV_FONT_MONTSERRAT_28 0
 #define LV_FONT_MONTSERRAT_30 0
@@ -872,13 +872,13 @@
 #define LV_USE_THEME_DEFAULT 1
 #if LV_USE_THEME_DEFAULT
     /** 0: Light mode; 1: Dark mode */
-    #define LV_THEME_DEFAULT_DARK 1  /* Card Player */
+    #define LV_THEME_DEFAULT_DARK 1  /* Spotify CD Player */
 
     /** 1: Enable grow on press */
     #define LV_THEME_DEFAULT_GROW 1
 
     /** Default transition time in ms. */
-    #define LV_THEME_DEFAULT_TRANSITION_TIME 0  /* Card Player: pressed state shows on the next frame */
+    #define LV_THEME_DEFAULT_TRANSITION_TIME 0  /* Spotify CD Player: pressed state shows on the next frame */
 #endif /*LV_USE_THEME_DEFAULT*/
 
 /** A very simple theme that is a good starting point for a custom theme */
@@ -1017,7 +1017,7 @@
 #define LV_USE_RLE 0
 
 /** QR code library */
-#define LV_USE_QRCODE 1  /* Card Player: setup screens */
+#define LV_USE_QRCODE 1  /* Spotify CD Player: setup screens */
 
 /** Barcode code library */
 #define LV_USE_BARCODE 0
@@ -1098,7 +1098,7 @@
 #define LV_USE_SNAPSHOT 0
 
 /** 1: Enable system monitor component */
-#define LV_USE_SYSMON   1  /* Card Player: spike S1 */
+#define LV_USE_SYSMON   1  /* Spotify CD Player: spike S1 */
 #if LV_USE_SYSMON
     /** Get the idle percentage. E.g. uint32_t my_get_idle(void); */
     #define LV_SYSMON_GET_IDLE lv_os_get_idle_percent
@@ -1112,9 +1112,9 @@
 
     /** 1: Show CPU usage and FPS count.
      *  - Requires `LV_USE_SYSMON = 1` */
-    #define LV_USE_PERF_MONITOR 1  /* Card Player: firmware hides it at boot; dev console "perf on" shows it */
+    #define LV_USE_PERF_MONITOR 1  /* Spotify CD Player: firmware hides it at boot; dev console "perf on" shows it */
     #if LV_USE_PERF_MONITOR
-        #define LV_USE_PERF_MONITOR_POS LV_ALIGN_TOP_MID  /* Card Player: clear of corner buttons */
+        #define LV_USE_PERF_MONITOR_POS LV_ALIGN_TOP_MID  /* Spotify CD Player: clear of corner buttons */
 
         /** 0: Displays performance data on the screen; 1: Prints performance data using log. */
         #define LV_USE_PERF_MONITOR_LOG_MODE 0
@@ -1451,7 +1451,7 @@
 *======================*/
 
 /** Enable examples to be built with the library. */
-#define LV_BUILD_EXAMPLES 0  /* Card Player */
+#define LV_BUILD_EXAMPLES 0  /* Spotify CD Player */
 
 /** Build the demos */
 #define LV_BUILD_DEMOS 1

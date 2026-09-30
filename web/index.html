@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spotify CD Player</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body data-page="index">
+<main>
+  <header>
+    <h1 id="name">Spotify CD Player</h1>
+    <a href="/manage">Manage</a>
+  </header>
+
+  <section id="setup-link" class="hidden">
+    <h2>Setting up?</h2>
+    <p class="muted">You're connected to the device's setup Wi-Fi.</p>
+    <a class="button" href="/setup">Start setup</a>
+  </section>
+
+  <section id="rolledback" class="hidden">
+    <p class="error">The last firmware update didn't start properly, so the device went back to the previous version.</p>
+  </section>
+
+  <section>
+    <dl>
+      <dt>Status</dt><dd id="state">…</dd>
+      <dt>Wi-Fi</dt><dd id="wifi">…</dd>
+      <dt>Address</dt><dd id="address">…</dd>
+      <dt>Spotify</dt><dd id="spotify">…</dd>
+      <dt>Firmware</dt><dd id="fw">…</dd>
+      <dt>Up for</dt><dd id="uptime">…</dd>
+      <dt>Last restart</dt><dd id="reset">…</dd>
+    </dl>
+  </section>
+
+  <p id="admin-warning" class="muted hidden">No admin password is set, so anyone on your network can change settings. Set one under Manage.</p>
+</main>
+</body>
+</html>

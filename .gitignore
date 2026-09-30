@@ -6,3 +6,4 @@
 *.pyc
 __pycache__/
 secrets.h
+src/net/WebAssets.h

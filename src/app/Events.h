@@ -17,7 +17,25 @@ enum class EventType : uint8_t {
   ConfirmResult,    // code = DialogId, value = 1 accepted / 0 cancelled
   SettingsChanged,  // Re-read settings and apply them
   DumpState,        // Dev console: log the app state
+  Net,              // Wi-Fi supervisor: code = NetEvent, value = detail
+  SetUpNetwork,     // UI intent: start the setup AP ("Set up network")
+  StopSetUpNetwork, // UI intent: stop it
+  Ota,              // Firmware upload: code = OtaEvent
+  Maintenance,      // From the portal: code = Maintenance
 };
+
+enum class Maintenance : uint8_t { Reboot, FactoryReset };
+
+enum class NetEvent : uint8_t {
+  Connected,      // Station got an IP
+  Disconnected,   // Lost the connection it had
+  GaveUp,         // Saved networks have failed for 10 min (§8.2)
+  SubmitStarted,  // Trying a network entered in the portal
+  SubmitFailed,   // ...which failed; value = driver reason
+  Changed,        // Anything else on the Wi-Fi screen changed (AP clients, portal on/off, time sync)
+};
+
+enum class OtaEvent : uint8_t { Started, Succeeded, Failed };
 
 // Confirmation dialogs the app can ask for; the answer comes back as ConfirmResult.
 enum class DialogId : uint8_t { FactoryReset, Test };

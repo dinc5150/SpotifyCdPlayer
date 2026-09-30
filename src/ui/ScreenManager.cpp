@@ -5,9 +5,12 @@
 #include "ui/LvglPort.h"
 #include "ui/Theme.h"
 #include "ui/screens/BootScreen.h"
+#include "ui/screens/ConnectingScreen.h"
 #include "ui/screens/IdleScreen.h"
 #include "ui/screens/MenuScreen.h"
 #include "ui/screens/PlaceholderScreen.h"
+#include "ui/screens/SetupScreen.h"
+#include "ui/screens/WifiScreen.h"
 #include "util/Log.h"
 
 namespace ui::screens {
@@ -29,6 +32,12 @@ std::unique_ptr<Screen> create(app::ScreenId id) {
       return std::make_unique<IdleScreen>();
     case app::ScreenId::Menu:
       return std::make_unique<MenuScreen>();
+    case app::ScreenId::Setup:
+      return std::make_unique<SetupScreen>();
+    case app::ScreenId::Connecting:
+      return std::make_unique<ConnectingScreen>();
+    case app::ScreenId::Wifi:
+      return std::make_unique<WifiScreen>();
     default:
       return std::make_unique<PlaceholderScreen>(id);
   }

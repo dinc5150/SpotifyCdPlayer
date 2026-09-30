@@ -35,7 +35,7 @@ enum class ScreenId : uint8_t {
 enum class Trigger : uint8_t {
   BootDone,       // arg: 1 if Wi-Fi networks are saved
   WifiSubmitted,  // credentials entered in the setup portal
-  WifiFailed,
+  WifiFailed,     // the submitted network failed, or saved ones failed for 10 min (§8.2)
   SetUpNetwork,   // user chose "Set up network"
   WifiConnected,  // arg: 1 if a refresh token is stored
   SpotifyLinked,
@@ -54,7 +54,6 @@ struct State {
   View view = View::Idle;
   Overlay overlay = Overlay::None;
   Overlay backTo = Overlay::None;  // Where Back goes: Menu if the overlay was opened from it
-  uint8_t wifiFailures = 0;
 };
 
 // Applies a trigger. Returns true if the state changed; triggers that don't

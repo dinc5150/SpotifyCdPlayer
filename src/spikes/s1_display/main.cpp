@@ -88,7 +88,7 @@ void buildTestScreen() {
   lv_qrcode_set_size(qr, 96);
   lv_qrcode_set_dark_color(qr, lv_color_black());
   lv_qrcode_set_light_color(qr, lv_color_white());
-  const char *wifiQr = "WIFI:T:WPA;S:CardPlayer-TEST;P:12345678;;";
+  const char *wifiQr = "WIFI:T:WPA;S:SpotifyCD-TEST;P:12345678;;";
   lv_qrcode_update(qr, wifiQr, strlen(wifiQr));
   lv_obj_align(qr, LV_ALIGN_CENTER, 0, -14);
 

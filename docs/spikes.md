@@ -56,7 +56,7 @@ heap internal free 306264 (min 300996), psram free 8384396 (min 8384396)
 LVGL running. Type 'help' for commands.|
 | 1.3 | Touch mapping correct | Tap each corner button: serial logs `Button TL/TR/BL/BR clicked` for the one under your finger. If wrong, `touchlog on` and try `txf <swap> <mx> <my>` until it is; record the values | must | yes |
 | 1.4 | Held press doesn't flicker | Press and hold a button: it stays highlighted | must |yes |
-| 1.5 | QR code scans | Phone camera on the centre QR offers to join `CardPlayer-TEST` | must | yes |
+| 1.5 | QR code scans | Phone camera on the centre QR offers to join `SpotifyCD-TEST` | must | yes |
 | 1.6 | Rendering speed | `bench` at 40 MHz, then `lcdhz 80` (saves and reboots; boot log shows the clock) and `bench` again; record ms. Any glitches at 80? `lcdhz 40` restores the default | | 40 MHz: fill 23.6 ms, LVGL full redraw 49.3 ms. 80 MHz: fill 12.6 ms, LVGL full redraw 38.5 ms, stable, no glitches (the earlier glitch was the failed runtime re-clock) |
 | 1.7 | Backlight dimming | `bl 100`, `bl 20`, `bl 0` | must | worked |
 | 1.8 | Panel sleep and wake | `sleep`: dark 3 s, wakes cleanly with no garbage; record the wake time | must | worked |

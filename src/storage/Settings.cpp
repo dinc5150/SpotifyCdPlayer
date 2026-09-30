@@ -89,6 +89,7 @@ void Settings::loadDevice() {
   Namespace p("dev");
   const DeviceSettings d;
   device_.name = getString(*p, "name", d.name);
+  device_.hostname = getString(*p, "host", d.hostname);
   device_.apPassword = getString(*p, "ap_pw", "");
   device_.adminHash = getString(*p, "admin", "");
 }
@@ -146,6 +147,7 @@ void Settings::setDevice(const DeviceSettings &device) {
   std::lock_guard<std::mutex> lock(mutex_);
   Namespace p("dev");
   putString(*p, "name", device_.name, device.name);
+  putString(*p, "host", device_.hostname, device.hostname);
   putString(*p, "ap_pw", device_.apPassword, device.apPassword);
   putString(*p, "admin", device_.adminHash, device.adminHash);
   device_ = device;

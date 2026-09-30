@@ -7,6 +7,8 @@
 #include "Console.h"
 #include "app/Events.h"
 #include "app/StateMachine.h"
+#include "net/WifiPolicy.h"
+#include "net/WifiSupervisor.h"
 #include "ui/ConfirmDialog.h"
 #include "ui/LvglPort.h"
 #include "ui/Toast.h"
@@ -26,8 +28,8 @@ void printSettings() {
   const SpotifySettings sp = settings->spotify();
   Serial.printf("ui: bright=%u dim=%u off=%u same=%u rmpause=%d albumorder=%d\n", ui.brightness, ui.dimSeconds,
                 ui.offSeconds, static_cast<unsigned>(ui.sameCard), ui.pauseOnRemove, ui.albumsInOrder);
-  Serial.printf("dev: name=\"%s\" ap_pw=%s admin=%s\n", device.name.c_str(), device.apPassword.c_str(),
-                device.adminHash.isEmpty() ? "(none)" : "(set)");
+  Serial.printf("dev: name=\"%s\" host=%s.local ap_pw=%s admin=%s\n", device.name.c_str(), device.hostname.c_str(),
+                device.apPassword.c_str(), device.adminHash.isEmpty() ? "(none)" : "(set)");
   const std::vector<WifiNetwork> wifi = settings->wifiNetworks();
   Serial.printf("wifi: %u network(s)", static_cast<unsigned>(wifi.size()));
   for (const WifiNetwork &n : wifi) Serial.printf(" \"%s\"", n.ssid.c_str());
@@ -62,6 +64,13 @@ void set(String args) {
     app::post(app::EventType::SettingsChanged);
     printSettings();
     return;
+  } else if (key == "host") {
+    DeviceSettings device = settings->device();
+    device.hostname = wifi_policy::hostname(value.c_str()).c_str();
+    settings->setDevice(device);
+    net::refreshHostname();
+    printSettings();
+    return;
   } else if (key == "speaker") {  // Stand-in until the Speakers screen (Phase 6)
     SpotifySettings sp = settings->spotify();
     sp.targetName = value;
@@ -70,7 +79,7 @@ void set(String args) {
     printSettings();
     return;
   } else {
-    Serial.println("Keys: bright dim off same rmpause albumorder name speaker");
+    Serial.println("Keys: bright dim off same rmpause albumorder name host speaker");
     return;
   }
   settings->setUi(ui);  // Sanitised: out-of-range values fall back
@@ -96,6 +105,40 @@ void event(String args) {
   app::post(app::EventType::DumpState);
 }
 
+// First word of `args`, or a "quoted phrase" (SSIDs can contain spaces).
+String nextArg(String &args) {
+  args.trim();
+  if (!args.startsWith("\"")) return console::nextWord(args);
+  const int end = args.indexOf('"', 1);
+  const String word = end < 0 ? args.substring(1) : args.substring(1, end);
+  args = end < 0 ? "" : args.substring(end + 1);
+  args.trim();
+  return word;
+}
+
+void wifi(String args) {
+  const String sub = console::nextWord(args);
+  if (sub == "add") {
+    const String ssid = nextArg(args);
+    net::submit(ssid, nextArg(args));
+    Serial.printf("Trying \"%s\"; 'wifi' shows the result\n", ssid.c_str());
+  } else if (sub == "forget") {
+    net::forget(nextArg(args));
+  } else if (sub == "ap") {
+    app::post(args == "off" ? app::EventType::StopSetUpNetwork : app::EventType::SetUpNetwork);
+  } else if (sub == "scan") {
+    bool scanning = false;
+    const std::vector<net::ScanEntry> results = net::scanResults(scanning);
+    for (const net::ScanEntry &e : results) {
+      Serial.printf("  %4ld dBm  %s%s\n", static_cast<long>(e.rssi), e.ssid.c_str(), e.secure ? "" : "  (open)");
+    }
+    Serial.printf("%u network(s)%s\n", static_cast<unsigned>(results.size()),
+                  scanning ? "; scanning, run 'wifi scan' again" : "");
+  } else {
+    app::post(app::EventType::DumpState);
+  }
+}
+
 void printLog(String) {
   constexpr size_t kBytes = 4096;
   std::unique_ptr<char[]> buffer(new char[kBytes]);
@@ -111,6 +154,8 @@ void begin(Settings &s) {
   console::add("ev", "<trigger> [arg]  fire a state machine trigger, e.g. 'ev wifi_lost', 'ev open_overlay about'",
                event);
   console::add("settings", "print stored settings", [](String) { printSettings(); });
+  console::add("wifi", "[add \"ssid\" \"password\" | forget \"ssid\" | ap on|off | scan]  Wi-Fi status and control",
+               wifi);
   console::add("set", "<key> <value>  change a setting (saved to NVS; survives reboot)", set);
   console::add("toast", "<text>  show a toast", [](String args) {
     ui::post([args] { ui::showToast(args); });

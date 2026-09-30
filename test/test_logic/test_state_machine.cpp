@@ -31,15 +31,30 @@ void bootWithWifiConnectsThenNeedsLinkWithoutToken() {
   TEST_ASSERT_EQUAL(ScreenId::Idle, screenFor(s));
 }
 
-void threeWifiFailuresReturnToSetup() {
+void wifiFailureReturnsToSetup() {
   State s;
   apply(s, Trigger::BootDone, 1);
-  apply(s, Trigger::WifiFailed);
-  apply(s, Trigger::WifiFailed);
+  TEST_ASSERT_TRUE(apply(s, Trigger::WifiFailed));
+  TEST_ASSERT_EQUAL(Phase::SetupAP, s.phase);
+}
+
+void submittedNetworkConnectsFromSetup() {
+  State s;
+  apply(s, Trigger::BootDone, 0);
+  apply(s, Trigger::WifiSubmitted);
   TEST_ASSERT_EQUAL(Phase::WifiConnecting, s.phase);
   apply(s, Trigger::WifiFailed);
   TEST_ASSERT_EQUAL(Phase::SetupAP, s.phase);
-  TEST_ASSERT_EQUAL_UINT8(0, s.wifiFailures);
+  // A saved network retried in the background can connect while in setup.
+  TEST_ASSERT_TRUE(apply(s, Trigger::WifiConnected, 1));
+  TEST_ASSERT_EQUAL(Phase::Ready, s.phase);
+}
+
+void offlineTooLongOpensSetup() {
+  State s = ready();
+  apply(s, Trigger::WifiLost);
+  TEST_ASSERT_TRUE(apply(s, Trigger::WifiFailed));
+  TEST_ASSERT_EQUAL(Phase::SetupAP, s.phase);
 }
 
 void wifiLossKeepsTheOverlay() {
@@ -107,6 +122,7 @@ void playbackSwitchesTheView() {
 void triggersOutOfPhaseAreIgnored() {
   State s;
   TEST_ASSERT_FALSE(apply(s, Trigger::WifiConnected, 1));
+  TEST_ASSERT_FALSE(apply(s, Trigger::WifiFailed));
   TEST_ASSERT_FALSE(apply(s, Trigger::WifiLost));
   TEST_ASSERT_EQUAL(Phase::Boot, s.phase);
 }
@@ -128,7 +144,9 @@ void namesRoundTrip() {
 void runStateMachineTests() {
   RUN_TEST(bootWithoutWifiGoesToSetup);
   RUN_TEST(bootWithWifiConnectsThenNeedsLinkWithoutToken);
-  RUN_TEST(threeWifiFailuresReturnToSetup);
+  RUN_TEST(wifiFailureReturnsToSetup);
+  RUN_TEST(submittedNetworkConnectsFromSetup);
+  RUN_TEST(offlineTooLongOpensSetup);
   RUN_TEST(wifiLossKeepsTheOverlay);
   RUN_TEST(loginExpiryClosesOverlays);
   RUN_TEST(backFromMenuChildReturnsToMenu);
